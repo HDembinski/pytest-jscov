@@ -292,11 +292,11 @@ def _resolve_static_root(session: pytest.Session) -> str:
     """Return the static root path, from CLI option or coverage.py config.
 
     Priority:
-    1. ``--jscov-static-root`` CLI option (explicit override)
+    1. ``--jscov`` CLI option (explicit override)
     2. ``static_root`` from ``[tool.coverage.pytest_jscov.covplugin]`` in
        pyproject.toml / .coveragerc (read via the active Coverage object)
     """
-    cli = session.config.getoption("--jscov-static-root", default="") or ""
+    cli = session.config.getoption("--jscov", default="") or ""
     if cli:
         return cli
     ctrl = getattr(
@@ -383,9 +383,9 @@ def _pytest_cov_active(config: pytest.Config) -> bool:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Register the --jscov-static-root CLI option."""
+    """Register the --jscov CLI option."""
     parser.addoption(
-        "--jscov-static-root",
+        "--jscov",
         default="",
         metavar="PATH",
         help=(

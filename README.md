@@ -145,7 +145,7 @@ The filesystem path to your static files directory. Can be set in two ways:
 2. **CLI option:**
 
    ```bash
-   pytest --cov=src --jscov-static-root=src/myapp/static
+   pytest --cov=src --jscov=src/myapp/static
    ```
 
    The CLI option takes precedence over the config file.
