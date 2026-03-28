@@ -332,17 +332,18 @@ def _url_key_to_path(key: str, static_root: str) -> Path | None:
     Keys are either absolute filesystem paths (produced by sourcemap resolution
     for esbuild-compiled TypeScript) or URL-based keys for plain JS files.
     """
-    p = Path(key)
-    if p.is_absolute():
-        return p
-    # URL key: strip scheme+host, then the leading "/static/" segment.
+    # Handle URL keys first, before is_absolute() — on Unix a key like
+    # "/static/app.js" would be mis-detected as an absolute filesystem path.
     if key.startswith(("http://", "https://")):
         key = key[key.index("/", 8) :]
     static_prefix = "/static/"
-    if not key.startswith(static_prefix):
-        return None
-    rel = key[len(static_prefix) :]
-    return (Path(static_root) / rel).resolve()
+    if key.startswith(static_prefix):
+        rel = key[len(static_prefix) :]
+        return (Path(static_root) / rel).resolve()
+    p = Path(key)
+    if p.is_absolute():
+        return p
+    return None
 
 
 def _inject_into_pytest_cov(
