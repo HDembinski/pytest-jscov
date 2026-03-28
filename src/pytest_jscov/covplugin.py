@@ -30,14 +30,18 @@ _lines_data: dict[str, list[int]] = {}
 
 
 class JsFilePlugin(coverage.CoveragePlugin):
+    """Coverage plugin that reports JS/TS files under a static root."""
+
     def __init__(self, options: dict) -> None:
+        """Initialize with options from the coverage config section."""
         self._static_root = options.get("static_root", "")
 
-    def file_reporter(self, filename: str) -> "coverage.FileReporter":
+    def file_reporter(self, filename: str) -> coverage.FileReporter:
+        """Return a reporter for the given JS/TS file."""
         return JsFileReporter(filename)
 
     def file_tracer(self, filename: str) -> None:
-        # We inject coverage data directly; no runtime tracing needed.
+        """Return None; coverage data is injected directly, not traced at runtime."""
         return None
 
     def find_executable_files(self, src_dir: str):
@@ -55,7 +59,10 @@ class JsFilePlugin(coverage.CoveragePlugin):
 
 
 class JsFileReporter(coverage.FileReporter):
+    """File reporter that reads JS/TS source and provides executable lines."""
+
     def source(self) -> str:
+        """Return the source text of the file."""
         return Path(self.filename).read_text(encoding="utf-8")
 
     def lines(self) -> set[int]:
@@ -64,4 +71,5 @@ class JsFileReporter(coverage.FileReporter):
 
 
 def coverage_init(reg: Plugins, options: dict) -> None:
+    """Entry point called by coverage.py to register the plugin."""
     reg.add_file_tracer(JsFilePlugin(options))

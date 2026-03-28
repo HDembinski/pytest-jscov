@@ -22,13 +22,13 @@ jobs:
             python-version: "3.12"
       fail-fast: false
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v3
 
-    - run: uv pip install --system -e .[test]
+      - run: uv pip install --system -e .[test]
 
-    - run: python -m pytest
+      - run: python -m pytest

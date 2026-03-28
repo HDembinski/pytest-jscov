@@ -9,17 +9,19 @@ import sys
 def test_smoke():
     result = subprocess.run(
         [
-            sys.executable, "-m", "pytest",
+            sys.executable,
+            "-m",
+            "pytest",
             "tests/smoke",
-            "--cov", "-x", "-v",
+            "--cov",
+            "-x",
+            "-v",
         ],
         capture_output=True,
         text=True,
     )
     output = result.stdout + result.stderr
-    assert result.returncode == 0, (
-        f"pytest failed (rc={result.returncode}):\n{output}"
-    )
+    assert result.returncode == 0, f"pytest failed (rc={result.returncode}):\n{output}"
     # Check that app.js appears with a non-zero Stmts count.
     m = re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
     assert m and int(m.group(1)) > 0, (

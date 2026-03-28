@@ -84,8 +84,7 @@ def _parse_inline_sourcemap(source: str) -> dict | None:
 
 
 def _gen_to_orig_line_map(sourcemap: dict) -> dict[int, list[tuple[int, int]]]:
-    """
-    Build generated_line (1-based) → [(source_idx, orig_line_1based)] from sourcemap.
+    """Build generated_line (1-based) → [(source_idx, orig_line_1based)] from sourcemap.
 
     Only the first source file is normally present for single-file esbuild output.
     """
@@ -284,6 +283,7 @@ class JsCovPlugin:
     name = "_jscov_collector"
 
     def __init__(self) -> None:
+        """Initialize empty coverage accumulators."""
         self.accumulated: dict[str, dict[int, int]] = {}
         self.sources: dict[str, str] = {}
 
@@ -397,6 +397,7 @@ def _pytest_cov_active(config: pytest.Config) -> bool:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the --jscov-static-root CLI option."""
     parser.addoption(
         "--jscov-static-root",
         default="",
@@ -411,6 +412,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """Register the JsCovPlugin with the pytest plugin manager."""
     config.pluginmanager.register(JsCovPlugin(), JsCovPlugin.name)
 
 
