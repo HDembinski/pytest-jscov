@@ -364,38 +364,27 @@ def _inject_into_pytest_cov(
 
     covplugin._lines_data.update(lines_cache)
 
-    try:
-        import coverage as coverage_module
-    except ImportError:
-        return
-
     cov_plugin = session.config.pluginmanager.get_plugin("_cov")
     ctrl = getattr(cov_plugin, "cov_controller", None)
     cov = getattr(ctrl, "cov", None)
     if cov is None:
         return
 
-    # Write JS data as .coverage.jscov so it is automatically included in
-    # pytest-cov's combine step.  The file tracer name must match what
-    # covplugin.JsFilePlugin registers to avoid "Conflicting file tracer".
+    # Inject directly into the active Coverage object's data store.
+    # This runs before pytest-cov's post-yield (which stops, saves, and
+    # reports), so the JS data will be included in the final report.
     tracer_name = "pytest_jscov.covplugin.JsFilePlugin"
-    data_file = cov.config.data_file  # typically ".coverage"
-    js_file = f"{data_file}.jscov"
-
-    # When --cov-branch is active, coverage.py refuses to combine line data
-    # with arc data.  Synthesise arcs from our line hits so the formats match.
     branch = getattr(cov.config, "branch", False)
-    js_data = coverage_module.CoverageData(basename=js_file)
+    cov_data = cov.get_data()
     if branch:
         arcs = {
             path: {(-1, line): None for line in lines}
             for path, lines in executed.items()
         }
-        js_data.add_arcs(arcs)
+        cov_data.add_arcs(arcs)
     else:
-        js_data.add_lines(executed)
-    js_data.add_file_tracers({path: tracer_name for path in executed})
-    js_data.write()
+        cov_data.add_lines(executed)
+    cov_data.add_file_tracers({path: tracer_name for path in executed})
 
 
 def _pytest_cov_active(config: pytest.Config) -> bool:
