@@ -14,7 +14,7 @@ application.
 - Resolves inline sourcemaps (e.g. from esbuild) to map coverage back to
   original `.ts` source files
 - Merges JS/TS line hits into pytest-cov so everything appears in one report
-- Works with `--cov-branch` (branch coverage mode)
+- Works with `--cov-branch` (but no branch coverage is collected)
 - Zero-config when coverage is not active: the `jscov` fixture is a no-op
   unless `--cov` is passed
 - Full VS Code integration
