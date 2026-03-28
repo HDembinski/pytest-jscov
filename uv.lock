@@ -309,9 +309,6 @@ requires-dist = [
 ]
 provides-extras = ["test"]
 
-[package.metadata.requires-dev]
-dev = []
-
 [[package]]
 name = "tomli"
 version = "2.4.1"

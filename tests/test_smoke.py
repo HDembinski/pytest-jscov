@@ -24,6 +24,6 @@ def test_smoke():
     assert result.returncode == 0, f"pytest failed (rc={result.returncode}):\n{output}"
     # Check that app.js appears with a non-zero Stmts count.
     m = re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
-    assert m and int(m.group(1)) > 0, (
+    assert m and int(m.group(1)) > 0 and int(m.group(2)) < int(m.group(1)), (
         f"expected app.js with covered statements in output:\n{output}"
     )
