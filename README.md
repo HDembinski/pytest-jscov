@@ -149,15 +149,3 @@ The filesystem path to your static files directory. Can be set in two ways:
    ```
 
    The CLI option takes precedence over the config file.
-
-## Requirements
-
-- Python >= 3.11
-- pytest
-- pytest-cov
-- playwright (with Chromium)
-- coverage.py
-
-## License
-
-MIT

@@ -3,18 +3,7 @@
 Register this in your .coveragerc (or pyproject.toml [tool.coverage.run]) to
 include JS/TS files in the combined Python + JS coverage report::
 
-    [run]
-    plugins = pytest_jscov.covplugin
-
-    [pytest_jscov.covplugin]
-    static_root = src/myapp/static
-
-Then run::
-
-    pytest --cov=src --jscov --jscov-static-root=src/myapp/static
-
-The plugin reads executable-line data from .jscov_lines.json written by the
-pytest plugin, so precise V8 executable lines are used rather than a heuristic.
+See README for usage.
 """
 
 from __future__ import annotations

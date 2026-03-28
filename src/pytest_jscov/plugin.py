@@ -3,22 +3,7 @@
 Collects V8 coverage from Playwright browser tests and injects it into
 pytest-cov's combined report. Only active when ``--cov`` is passed to pytest.
 
-Usage in a project conftest.py
--------------------------------
-Use the ``jscov`` fixture as an async context manager around page usage::
-
-    @pytest.fixture
-    async def page(browser, jscov):
-        context = await browser.new_context()
-        page = await context.new_page()
-        async with jscov(context, page, base_url):
-            await page.goto(base_url)
-            yield page
-        await page.close()
-        await context.close()
-
-The ``jscov`` fixture is a no-op when ``--cov`` is not active, so no
-``if`` guard is needed.
+See README for usage.
 """
 
 import base64
