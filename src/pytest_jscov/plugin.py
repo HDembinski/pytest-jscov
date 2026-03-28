@@ -377,8 +377,8 @@ def _inject_into_pytest_cov(
 
     # Write JS data as .coverage.jscov so it is automatically included in
     # pytest-cov's combine step.  The file tracer name must match what
-    # covplugin._JsFilePlugin registers to avoid "Conflicting file tracer".
-    tracer_name = "pytest_jscov.covplugin._JsFilePlugin"
+    # covplugin.JsFilePlugin registers to avoid "Conflicting file tracer".
+    tracer_name = "pytest_jscov.covplugin.JsFilePlugin"
     data_file = cov.config.data_file  # typically ".coverage"
     js_file = f"{data_file}.jscov"
 
