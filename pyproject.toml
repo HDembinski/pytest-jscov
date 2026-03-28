@@ -8,7 +8,19 @@ version = "0.1.0"
 description = "Pytest plugin for JavaScript coverage via Playwright CDP"
 license = { text = "MIT" }
 requires-python = ">=3.11"
-dependencies = ["pytest"]
+dependencies = ["playwright>=1.58.0", "pytest", "pytest-cov"]
+
+[project.optional-dependencies]
+test = ["anyio>=4.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [project.entry-points."pytest11"]
 jscov = "pytest_jscov.plugin"
+
+[tool.coverage.run]
+plugins = ["pytest_jscov.covplugin"]
+
+[tool.coverage.pytest_jscov.covplugin]
+static_root = "tests/data/static"

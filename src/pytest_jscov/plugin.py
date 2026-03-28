@@ -320,7 +320,10 @@ def _resolve_static_root(session: pytest.Session) -> str:
     cov = getattr(ctrl, "cov", None)
     if cov is None:
         return ""
-    return cov.config.get_option("pytest_jscov.covplugin:static_root") or ""
+    try:
+        return cov.config.get_option("pytest_jscov.covplugin:static_root") or ""
+    except Exception:
+        return ""
 
 
 def _url_key_to_path(key: str, static_root: str) -> Path | None:
@@ -472,7 +475,10 @@ def jscov(request: pytest.FixtureRequest):
     """
     if not _pytest_cov_active(request.config):
         return _noop_context
-    plugin: JsCovPlugin = request.config.pluginmanager.get_plugin(JsCovPlugin.name)
+    plugin: JsCovPlugin | None = request.config.pluginmanager.get_plugin(
+        JsCovPlugin.name
+    )
+    assert plugin is not None
     return lambda context, page, base_url: _cdp_coverage(
         context, page, base_url, plugin
     )
