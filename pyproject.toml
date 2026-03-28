@@ -36,6 +36,7 @@ convention = "numpy"
 
 [tool.coverage.run]
 plugins = ["pytest_jscov.covplugin"]
+core = "ctrace"
 
 [tool.coverage.pytest_jscov.covplugin]
 static_root = "tests/data/static"

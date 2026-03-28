@@ -33,5 +33,5 @@ async def test_js_coverage(request, browser, jscov, base_url):
     covered = {line for line, count in hits.items() if count > 0}
     uncovered = {line for line, count in hits.items() if count == 0}
 
-    assert 4 in covered, f"expected line 4 covered, got {hits}"
-    assert 6 in uncovered, f"expected line 1 uncovered, got {hits}"
+    assert {1, 2, 3, 4, 5, 7} == covered, f"expected line 4 covered, got {hits}"
+    assert {6} == uncovered, f"expected line 1 uncovered, got {hits}"
