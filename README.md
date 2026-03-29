@@ -1,9 +1,9 @@
 # pytest-jscov
 
 A pytest plugin that collects JavaScript and TypeScript code coverage from
-[Playwright](https://playwright.dev/python/) browser tests via Chrome DevTools
-Protocol (CDP) and merges it into
-[pytest-cov](https://github.com/pytest-dev/pytest-cov)'s combined report.
+[Playwright](https://playwright.dev/python/) browser tests via Chrome's DevTools Protocol
+(CDP) and merges it into [pytest-cov](https://github.com/pytest-dev/pytest-cov)'s combined
+report. More precisely, we use Chrome's profiler to track which lines of code were executed.
 
 Get a single, unified coverage report for your full-stack Python + JS/TS
 application.
@@ -19,6 +19,33 @@ application.
   unless `--cov` is passed
 - Full VS Code integration
 
+
+## Limitations
+
+You must implement your tests in Python using the async Playwright API with the Chrome
+browser for this to work, you need to configure both `pytest` and `coverage` to use this
+plugin, and you need to use the `jscov` context manager in your `page` fixture. For more
+details, see the installation section.
+
+Even then, coverage collection is not perfect. Coverage collection is attached to the currently
+executing page context. If that page reloads or navigates away before `pytest-jscov` reads
+the coverage data, the old execution context is gone and its coverage data is gone with
+it.
+
+The current implementation uses a partial workaround. While the `jscov(...)`
+context is active, it temporarily wraps the active Playwright `Page` object's
+`reload`, `goto`, `go_back`, and `go_forward` methods and flushes coverage
+immediately before those navigations run.
+
+This improves coverage retention for navigations initiated through those page methods in
+tests, but it does **not** catch every way a page can navigate or be replaced. In
+particular, navigations triggered from inside page JavaScript, such as
+
+   `window.location.assign(...)`
+
+Those cases need lower-level page lifecycle hooks or browser events rather than only
+method wrapping on the Playwright `Page` object.
+
 ## Installation
 
 ```bash
@@ -28,9 +55,7 @@ pip install pytest-jscov
 The plugin requires `pytest`, `pytest-cov`, and `playwright` (with Chromium
 installed).
 
-## Quick start
-
-### 1. Register the coverage.py plugin
+### Register the coverage.py plugin
 
 In your `pyproject.toml`:
 
@@ -45,7 +70,7 @@ static_root = "src/myapp/static"
 `static_root` tells the plugin where your JS/TS source files live on disk, so
 it can match coverage data to real files.
 
-### 2. Use the `jscov` fixture in your page fixture
+### Use the `jscov` fixture in your page fixture
 
 ```python
 import pytest
@@ -69,13 +94,15 @@ The `jscov(context, page, base_url)` call returns an async context manager
 that:
 
 - **On enter:** opens a CDP session and starts V8 precise coverage
+- **During the context:** flushes coverage before `page.reload()`,
+   `page.goto()`, `page.go_back()`, and `page.go_forward()`
 - **On exit:** collects coverage, fetches script sources, and records
   everything
 
 When `--cov` is not passed to pytest, `jscov` is a no-op context manager, so
 you don't need any `if` guards.
 
-### 3. Run your tests
+### Run your tests
 
 ```bash
 pytest --cov=src --cov-report=term
@@ -115,11 +142,6 @@ means if you use a bundler like esbuild to transpile TypeScript with
 `--sourcemap=inline`, coverage is reported against your `.ts` files, not the
 generated `.js`.
 
-### Script filtering
-
-Only scripts served under `{base_url}/static/` are recorded. Other scripts
-(browser extensions, third-party CDN scripts, etc.) are ignored.
-
 ## IDE integration
 
 When using the
@@ -133,7 +155,7 @@ markers directly in your `.ts` and `.js` sources.
 
 ### `static_root` (required)
 
-The filesystem path to your static files directory. Can be set in two ways:
+This is the filesystem path to your static files directory. Can be set in two ways:
 
 1. **coverage.py config** (recommended):
 
@@ -149,3 +171,11 @@ The filesystem path to your static files directory. Can be set in two ways:
    ```
 
    The CLI option takes precedence over the config file.
+
+### Filtering
+
+Just like with Python sources, you can restrict the coverage report to individual files or directories by passing a path to `--cov`, for example:
+
+   ```bash
+   pytest --cov=src/myapp/static/foo.js
+   ```
