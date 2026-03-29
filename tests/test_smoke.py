@@ -27,6 +27,7 @@ def test_smoke():
     # Check that app.js appears with a non-zero Stmts count.
     m = re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
     assert m and int(m.group(1)) > 0 and int(m.group(2)) < int(m.group(1))
+    assert "CoverageWarning" not in output
 
 
 def test_jscov_cli_overrides_config():
@@ -56,6 +57,7 @@ def test_jscov_cli_overrides_config():
     # app.js must NOT appear in the coverage report — the CLI override pointed
     # to a bogus path, so the plugin couldn't map the JS coverage to real files.
     assert not re.search(r"app\.js", output)
+    assert "CoverageWarning" not in output
 
 
 def test_cov_can_target_single_js_file():
@@ -78,3 +80,4 @@ def test_cov_can_target_single_js_file():
     assert result.returncode == 0, f"pytest failed (rc={result.returncode}):\n{output}"
     assert re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
     assert not re.search(r"unused\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
+    assert "CoverageWarning" not in output
