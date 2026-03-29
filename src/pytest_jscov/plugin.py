@@ -9,11 +9,13 @@ See README for usage.
 import base64
 import json
 import re
+import warnings
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
+from coverage.exceptions import CoverageWarning
 
 from pytest_jscov import covplugin
 
@@ -331,6 +333,86 @@ def _url_key_to_path(key: str, static_root: str) -> Path | None:
     return None
 
 
+def _path_based_cov_sources(session: pytest.Session) -> list[Path] | None:
+    """Return existing path-based --cov targets, or None when unfiltered."""
+    ctrl = getattr(
+        session.config.pluginmanager.get_plugin("_cov"), "cov_controller", None
+    )
+    cov_source = getattr(ctrl, "cov_source", None)
+    if cov_source is None:
+        return None
+
+    source_paths: list[Path] = []
+    for source in cov_source:
+        path = Path(source)
+        if path.exists():
+            source_paths.append(path.resolve())
+
+    return source_paths or None
+
+
+def _has_only_js_file_cov_sources(session: pytest.Session) -> bool:
+    """Return True when every explicit --cov source is a JS/TS file path."""
+    ctrl = getattr(
+        session.config.pluginmanager.get_plugin("_cov"), "cov_controller", None
+    )
+    cov_source = getattr(ctrl, "cov_source", None)
+    if not cov_source:
+        return False
+
+    for source in cov_source:
+        path = Path(source)
+        if not path.exists():
+            return False
+        path = path.resolve()
+        if not path.is_file():
+            return False
+        if path.suffix not in {".js", ".ts"} or path.name.endswith(".d.ts"):
+            return False
+
+    return True
+
+
+def _filter_false_positive_js_warnings(session: pytest.Session) -> None:
+    """Ignore false-positive coverage warnings for explicit JS file targets.
+
+    coverage.py treats ``--cov=path/to/file.js`` as a Python source target and
+    emits ``module-not-imported`` and ``no-data-collected`` warnings before the
+    injected JS data is reported. Those warnings are false positives for this
+    plugin's file-based JS coverage mode.
+    """
+    if not _has_only_js_file_cov_sources(session):
+        return
+
+    warnings.filterwarnings(
+        "ignore",
+        message=".+module-not-imported",
+        category=CoverageWarning,
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message=".+no-data-collected",
+        category=CoverageWarning,
+    )
+
+
+def _matches_cov_source(path: Path, source_paths: list[Path] | None) -> bool:
+    """Return True when *path* is allowed by the active path-based --cov targets."""
+    if source_paths is None:
+        return True
+
+    for source in source_paths:
+        if source.is_file() and path == source:
+            return True
+        if source.is_dir():
+            try:
+                path.relative_to(source)
+            except ValueError:
+                continue
+            return True
+    return False
+
+
 def _inject_into_pytest_cov(
     session: pytest.Session,
     accumulated: dict[str, dict[int, int]],
@@ -339,10 +421,15 @@ def _inject_into_pytest_cov(
     """Merge JS line hits into the active pytest-cov Coverage object."""
     lines_cache: dict[str, list[int]] = {}
     executed: dict[str, dict[int, None]] = {}
+    _filter_false_positive_js_warnings(session)
+    source_paths = _path_based_cov_sources(session)
 
     for key, hits in accumulated.items():
         path = _url_key_to_path(key, static_root)
         if path is None or not path.exists():
+            continue
+        path = path.resolve()
+        if not _matches_cov_source(path, source_paths):
             continue
         path_str = str(path)
         lines_cache[path_str] = sorted(hits.keys())
