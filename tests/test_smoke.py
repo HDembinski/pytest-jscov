@@ -22,6 +22,7 @@ def test_smoke():
         text=True,
     )
     output = result.stdout + result.stderr
+    print(output)
     assert result.returncode == 0, f"pytest failed (rc={result.returncode}):\n{output}"
     # Check that app.js appears with a non-zero Stmts count.
     m = re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
@@ -50,7 +51,30 @@ def test_jscov_cli_overrides_config():
         text=True,
     )
     output = result.stdout + result.stderr
+    print(output)
     assert result.returncode == 0, f"pytest failed (rc={result.returncode}):\n{output}"
     # app.js must NOT appear in the coverage report — the CLI override pointed
     # to a bogus path, so the plugin couldn't map the JS coverage to real files.
     assert not re.search(r"app\.js", output)
+
+
+def test_cov_can_target_single_js_file():
+    """--cov=path/to/file.js should limit the report to that JS file."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/smoke",
+            "--cov=tests/data/static/app.js",
+            "-x",
+            "-v",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    output = result.stdout + result.stderr
+    print(output)
+    assert result.returncode == 0, f"pytest failed (rc={result.returncode}):\n{output}"
+    assert re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
+    assert not re.search(r"unused\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)

@@ -18,6 +18,37 @@ from coverage.plugin_support import Plugins
 _lines_data: dict[str, list[int]] = {}
 
 
+def _is_relative_to(path: Path, other: Path) -> bool:
+    """Return True when *path* is equal to or contained in *other*."""
+    try:
+        path.relative_to(other)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_reportable_js(path: Path) -> bool:
+    """Return True for reportable JS/TS source files."""
+    if path.suffix not in {".js", ".ts"}:
+        return False
+    if path.name.endswith(".d.ts"):
+        return False
+    return not any(part in {"node_modules", "vendor", ".venv"} for part in path.parts)
+
+
+def _iter_reportable_js(target: Path):
+    """Yield reportable JS/TS files from *target*."""
+    if target.is_file():
+        if _is_reportable_js(target):
+            yield str(target.resolve())
+        return
+
+    for pattern in ("*.js", "*.ts"):
+        for path in target.rglob(pattern):
+            if _is_reportable_js(path):
+                yield str(path.resolve())
+
+
 class JsFilePlugin(coverage.CoveragePlugin):
     """Coverage plugin that reports JS/TS files under a static root."""
 
@@ -34,17 +65,30 @@ class JsFilePlugin(coverage.CoveragePlugin):
         return None
 
     def find_executable_files(self, src_dir: str):
-        """Yield JS/TS files under static_root (or src_dir as fallback)."""
-        root = Path(self._static_root) if self._static_root else Path(src_dir)
-        if not root.is_dir():
+        """Yield JS/TS files that match the active coverage source target."""
+        static_root = Path(self._static_root).resolve() if self._static_root else None
+        src_path = Path(src_dir)
+
+        if src_path.exists():
+            src_path = src_path.resolve()
+            if src_path.is_file():
+                yield from _iter_reportable_js(src_path)
+                return
+
+            if static_root and static_root.is_dir():
+                if _is_relative_to(static_root, src_path):
+                    yield from _iter_reportable_js(static_root)
+                    return
+                if _is_relative_to(src_path, static_root):
+                    yield from _iter_reportable_js(src_path)
+                    return
+                return
+
+            yield from _iter_reportable_js(src_path)
             return
-        skip = {"node_modules", "vendor", ".venv"}
-        for pattern in ("*.js", "*.ts"):
-            for p in root.rglob(pattern):
-                if not any(part in skip for part in p.parts):
-                    # Exclude .d.ts declaration files — no executable code.
-                    if not p.name.endswith(".d.ts"):
-                        yield str(p.resolve())
+
+        if static_root and static_root.is_dir():
+            yield from _iter_reportable_js(static_root)
 
 
 class JsFileReporter(coverage.FileReporter):

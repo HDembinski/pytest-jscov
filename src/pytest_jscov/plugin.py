@@ -331,6 +331,41 @@ def _url_key_to_path(key: str, static_root: str) -> Path | None:
     return None
 
 
+def _path_based_cov_sources(session: pytest.Session) -> list[Path] | None:
+    """Return existing path-based --cov targets, or None when unfiltered."""
+    ctrl = getattr(
+        session.config.pluginmanager.get_plugin("_cov"), "cov_controller", None
+    )
+    cov_source = getattr(ctrl, "cov_source", None)
+    if cov_source is None:
+        return None
+
+    source_paths: list[Path] = []
+    for source in cov_source:
+        path = Path(source)
+        if path.exists():
+            source_paths.append(path.resolve())
+
+    return source_paths or None
+
+
+def _matches_cov_source(path: Path, source_paths: list[Path] | None) -> bool:
+    """Return True when *path* is allowed by the active path-based --cov targets."""
+    if source_paths is None:
+        return True
+
+    for source in source_paths:
+        if source.is_file() and path == source:
+            return True
+        if source.is_dir():
+            try:
+                path.relative_to(source)
+            except ValueError:
+                continue
+            return True
+    return False
+
+
 def _inject_into_pytest_cov(
     session: pytest.Session,
     accumulated: dict[str, dict[int, int]],
@@ -339,10 +374,14 @@ def _inject_into_pytest_cov(
     """Merge JS line hits into the active pytest-cov Coverage object."""
     lines_cache: dict[str, list[int]] = {}
     executed: dict[str, dict[int, None]] = {}
+    source_paths = _path_based_cov_sources(session)
 
     for key, hits in accumulated.items():
         path = _url_key_to_path(key, static_root)
         if path is None or not path.exists():
+            continue
+        path = path.resolve()
+        if not _matches_cov_source(path, source_paths):
             continue
         path_str = str(path)
         lines_cache[path_str] = sorted(hits.keys())
