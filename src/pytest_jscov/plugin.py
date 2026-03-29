@@ -500,24 +500,50 @@ async def _cdp_coverage(
 ) -> AsyncIterator[None]:
     """Start V8 coverage via CDP, collect on exit, and fold into *plugin*."""
     cdp = await context.new_cdp_session(page)
+
+    async def flush_coverage() -> None:
+        result = await cdp.send("Profiler.takePreciseCoverage")
+        entries = result.get("result", [])
+        for entry in entries:
+            try:
+                src = await cdp.send(
+                    "Debugger.getScriptSource", {"scriptId": entry["scriptId"]}
+                )
+                entry["source"] = src.get("scriptSource", "")
+            except Exception:
+                entry["source"] = ""
+        process_entries(entries, base_url, plugin.accumulated, plugin.sources)
+
+    patched_methods: list[tuple[str, object, bool]] = []
+
+    for method_name in ("reload", "goto", "go_back", "go_forward"):
+        original = getattr(page, method_name, None)
+        if original is None:
+            continue
+        had_instance_attr = method_name in vars(page)
+
+        async def wrapped(*args, _original=original, **kwargs):
+            await flush_coverage()
+            return await _original(*args, **kwargs)
+
+        setattr(page, method_name, wrapped)
+        patched_methods.append((method_name, original, had_instance_attr))
+
     await cdp.send("Profiler.enable")
     await cdp.send("Debugger.enable")
     await cdp.send(
         "Profiler.startPreciseCoverage", {"callCount": True, "detailed": True}
     )
-    yield
-    result = await cdp.send("Profiler.takePreciseCoverage")
-    entries = result.get("result", [])
-    for entry in entries:
-        try:
-            src = await cdp.send(
-                "Debugger.getScriptSource", {"scriptId": entry["scriptId"]}
-            )
-            entry["source"] = src.get("scriptSource", "")
-        except Exception:
-            entry["source"] = ""
-    await cdp.detach()
-    process_entries(entries, base_url, plugin.accumulated, plugin.sources)
+    try:
+        yield
+    finally:
+        for method_name, original, had_instance_attr in patched_methods:
+            if had_instance_attr:
+                setattr(page, method_name, original)
+            else:
+                delattr(page, method_name)
+        await flush_coverage()
+        await cdp.detach()
 
 
 @pytest.fixture

@@ -69,6 +69,8 @@ The `jscov(context, page, base_url)` call returns an async context manager
 that:
 
 - **On enter:** opens a CDP session and starts V8 precise coverage
+- **During the context:** flushes coverage before `page.reload()`,
+   `page.goto()`, `page.go_back()`, and `page.go_forward()`
 - **On exit:** collects coverage, fetches script sources, and records
   everything
 
@@ -119,6 +121,29 @@ generated `.js`.
 
 Only scripts served under `{base_url}/static/` are recorded. Other scripts
 (browser extensions, third-party CDN scripts, etc.) are ignored.
+
+### Current limits
+
+V8 coverage is attached to the currently executing page context. If that page
+reloads or navigates away before `pytest-jscov` reads the coverage data, the
+old execution context is gone and its coverage data is gone with it.
+
+That is the core limitation: collecting coverage only at fixture teardown is
+too late for pages that have already been replaced.
+
+The current implementation uses a partial workaround. While the `jscov(...)`
+context is active, it temporarily wraps the active Playwright `Page` object's
+`reload`, `goto`, `go_back`, and `go_forward` methods and flushes coverage
+immediately before those navigations run.
+
+This improves coverage retention for navigations initiated through those page
+methods in tests, but it is still a band-aid rather than a complete solution. It does
+**not** catch every way a page can navigate or be replaced. In particular, navigations triggered from inside page JavaScript, such as
+
+   `window.location.assign(...)`
+
+Those cases need lower-level page lifecycle hooks or browser events rather than
+only method wrapping on the Playwright `Page` object.
 
 ## IDE integration
 
