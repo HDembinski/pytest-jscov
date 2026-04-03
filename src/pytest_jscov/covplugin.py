@@ -15,7 +15,7 @@ from coverage.plugin_support import Plugins
 
 from pytest_jscov.executable_lines import executable_lines_for_file
 
-# Populated by pytest_jscov.plugin._inject_into_pytest_cov before the report
+# Populated by pytest_jscov.plugin.inject_into_pytest_cov before the report
 # is generated.  Maps absolute path → sorted list of executable line numbers.
 _lines_data: dict[str, list[int]] = {}
 

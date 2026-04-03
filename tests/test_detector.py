@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from pytest_jscov.executable_lines import static_executable_lines
-from pytest_jscov.plugin import _filter_line_hits, entry_to_line_hits
+from pytest_jscov.source_filtering import filter_line_hits
+from pytest_jscov.utils import entry_to_line_hits
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -86,7 +87,7 @@ async def test_static_detector_filters_cdp_line_hits(
 
     raw_cdp_lines = set(entry_to_line_hits(entry))
     filtered_cdp_lines = set(
-        _filter_line_hits(entry["source"], entry_to_line_hits(entry))
+        filter_line_hits(entry["source"], entry_to_line_hits(entry))
     )
 
     assert filtered_cdp_lines == expected_lines

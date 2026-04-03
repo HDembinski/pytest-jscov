@@ -35,15 +35,19 @@ to the currently executing page context. If that page reloads or navigates away 
 `pytest-jscov` reads the coverage data, the old execution context is gone and its coverage
 data with it.
 
-We implement a partial workaround for this issue. While the `jscov(...)` context is
-active, it temporarily wraps the active Playwright `Page` object's `reload`, `goto`,
-`go_back`, and `go_forward` methods and flushes coverage immediately before those
-navigations run.
+We implement a partial workaround for this issue. When the plugin is active,
+Playwright browser contexts created via `browser.new_context()` and pages
+created via `browser.new_page()` are automatically instrumented so that
+`reload`, `goto`, `go_back`, and `go_forward` flush coverage immediately
+before those navigations run.
 
 This improves coverage retention for navigations initiated through those page methods in
 tests, but it does **not** catch page navigation triggered from JavaScript, such as
 
    `window.location.assign(...)`
+
+For those cases, instrumented pages get a `save_coverage()` method. Call it just
+before the action that would replace the page context.
 
 ### Detection of executable lines
 
@@ -76,7 +80,7 @@ it can match coverage data to real files.
 The plugin automatically switches `coverage.py` to the plugin-compatible tracing
 `ctrace` core.
 
-### Use the `jscov` fixture in your page fixture
+### Use normal Playwright page creation
 
 ```python
 import pytest
@@ -84,29 +88,33 @@ from collections.abc import AsyncIterator
 from playwright.async_api import Browser, Page
 
 @pytest.fixture
-async def page(browser: Browser, jscov) -> AsyncIterator[Page]:
-    context = await browser.new_context()
-    page = await context.new_page()
+async def page(browser: Browser) -> AsyncIterator[Page]:
+   context = await browser.new_context()
 
-    async with jscov(context, page, "http://localhost:8000"):
-        await page.goto("http://localhost:8000")
-        yield page
+   page = await context.new_page()
+   await page.goto("http://localhost:8000")
+   yield page
 
-    await page.close()
-    await context.close()
+   await page.close()
+   await context.close()
 ```
 
-The `jscov(context, page, base_url)` call returns an async context manager
-that:
+Any page created from that context will have its coverage recorded. The same
+holds for pages created directly with `browser.new_page()`.
 
-- **On enter:** opens a CDP session and starts V8 precise coverage
-- **During the context:** flushes coverage before `page.reload()`,
-   `page.goto()`, `page.go_back()`, and `page.go_forward()`
-- **On exit:** collects coverage, fetches script sources, and records
-  everything
+When the plugin is active, `browser.new_context()` and `browser.new_page()`
+return instrumented objects so that:
 
-When `--cov` is not passed to pytest, `jscov` is a no-op context manager, so
-you don't need any `if` guards.
+- **On each `context.new_page()`:** opens a CDP session and starts V8 precise
+   coverage for the new page
+- **During the page lifetime:** flushes coverage before `page.reload()`,
+   `page.goto()`, `page.go_back()`, `page.go_forward()`, and `page.close()`
+- **During the page lifetime:** patches `await page.save_coverage()` onto the
+   Playwright page so you can persist coverage before JS-triggered navigation
+- **On `context.close()`:** collects coverage from all tracked pages, then
+   detaches their CDP sessions
+
+When `--cov` is not passed to pytest, Playwright is left alone.
 
 ### Run your tests
 
@@ -126,27 +134,6 @@ src/myapp/static/modules/bar.js         103     10    90%
 ----------------------------------------------------------
 TOTAL                                   918    258    72%
 ```
-
-## Configuration
-
-### `static_root` (required)
-
-This is the filesystem path to your static files directory. Can be set in two ways:
-
-1. **coverage.py config** (recommended):
-
-   ```toml
-   [tool.coverage.pytest_jscov.covplugin]
-   static_root = "src/myapp/static"
-   ```
-
-2. **CLI option:**
-
-   ```bash
-   pytest --cov=src --jscov=src/myapp/static
-   ```
-
-   The CLI option takes precedence over the config file.
 
 ### Filtering
 
