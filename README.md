@@ -46,6 +46,15 @@ particular, navigations triggered from inside page JavaScript, such as
 Those cases need lower-level page lifecycle hooks or browser events rather than only
 method wrapping on the Playwright `Page` object.
 
+Coverage reporting for files that were never observed by V8 also has a limitation.
+The file reporter can still discover `.js` and `.ts` files on disk under
+`static_root`, but Chrome can only provide coverage ranges for scripts that were
+actually loaded into the browser. For files that were never loaded during the
+test run, `pytest-jscov` infers executable lines heuristically from the source
+text so they still appear in the report. As a result, the reported `Stmts` and
+`Miss` counts for those not-yet-covered files are approximate and may not match
+V8's exact range model line-for-line.
+
 ## Installation
 
 ```bash

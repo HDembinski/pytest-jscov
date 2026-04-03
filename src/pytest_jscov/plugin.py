@@ -152,6 +152,26 @@ def entry_to_line_hits(entry: dict) -> dict[int, int]:
     return result
 
 
+def _filter_line_hits(source: str, line_hits: dict[int, int]) -> dict[int, int]:
+    """Keep only line hits that the static detector considers executable."""
+    executable_lines = covplugin._static_executable_lines(source)
+    return {
+        line: count for line, count in line_hits.items() if line in executable_lines
+    }
+
+
+def _source_executable_lines(key: str, source_text: str | None) -> set[int] | None:
+    """Return executable lines for a source-mapped file when available."""
+    if source_text:
+        return covplugin._static_executable_lines(source_text)
+
+    path = Path(key)
+    if path.is_absolute() and path.exists():
+        return covplugin._executable_lines_for_file(str(path))
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Aggregate coverage across multiple test runs
 # ---------------------------------------------------------------------------
@@ -200,7 +220,7 @@ def process_entries(
             continue
 
         source: str = entry.get("source", "")
-        line_hits = entry_to_line_hits(entry)
+        line_hits = _filter_line_hits(source, entry_to_line_hits(entry))
 
         sourcemap = _parse_inline_sourcemap(source)
         if sourcemap:
@@ -219,6 +239,16 @@ def process_entries(
             for src_idx, hits in orig_hits.items():
                 key = src_names[src_idx] if src_idx < len(src_names) else url
                 key = _normalise_source_key(url, key)
+                executable_lines = _source_executable_lines(
+                    key,
+                    src_contents[src_idx] if src_idx < len(src_contents) else None,
+                )
+                if executable_lines is not None:
+                    hits = {
+                        line: count
+                        for line, count in hits.items()
+                        if line in executable_lines
+                    }
                 accumulated[key] = _merge_hits(accumulated.get(key, {}), hits)
                 if key not in sources and src_idx < len(src_contents):
                     sources[key] = src_contents[src_idx]
@@ -351,8 +381,29 @@ def _path_based_cov_sources(session: pytest.Session) -> list[Path] | None:
     return source_paths or None
 
 
-def _has_only_js_file_cov_sources(session: pytest.Session) -> bool:
-    """Return True when every explicit --cov source is a JS/TS file path."""
+def _is_js_cov_source(path: Path) -> bool:
+    """Return True when *path* points only at reportable JS/TS sources."""
+    if path.is_file():
+        return path.suffix in {".js", ".ts"} and not path.name.endswith(".d.ts")
+
+    if not path.is_dir():
+        return False
+
+    has_reportable_js = False
+    for child in path.rglob("*"):
+        if not child.is_file():
+            continue
+        if covplugin._is_reportable_js(child):
+            has_reportable_js = True
+            continue
+        if child.suffix == ".py":
+            return False
+
+    return has_reportable_js
+
+
+def _has_only_js_cov_sources(session: pytest.Session) -> bool:
+    """Return True when every explicit --cov source targets JS/TS content only."""
     ctrl = getattr(
         session.config.pluginmanager.get_plugin("_cov"), "cov_controller", None
     )
@@ -365,9 +416,7 @@ def _has_only_js_file_cov_sources(session: pytest.Session) -> bool:
         if not path.exists():
             return False
         path = path.resolve()
-        if not path.is_file():
-            return False
-        if path.suffix not in {".js", ".ts"} or path.name.endswith(".d.ts"):
+        if not _is_js_cov_source(path):
             return False
 
     return True
@@ -381,7 +430,7 @@ def _filter_false_positive_js_warnings(session: pytest.Session) -> None:
     injected JS data is reported. Those warnings are false positives for this
     plugin's file-based JS coverage mode.
     """
-    if not _has_only_js_file_cov_sources(session):
+    if not _has_only_js_cov_sources(session):
         return
 
     warnings.filterwarnings(

@@ -81,3 +81,37 @@ def test_cov_can_target_single_js_file():
     assert re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
     assert not re.search(r"unused\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
     assert "CoverageWarning" not in output
+
+
+def test_uncovered_js_file_reports_missed_statements():
+    """Uncovered JS files should report missed statements, not zero statements."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/smoke",
+            "--cov=tests/data/static",
+            "-x",
+            "-v",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    output = result.stdout + result.stderr
+    print(output)
+    assert result.returncode == 0, f"pytest failed (rc={result.returncode}):\n{output}"
+
+    match = re.search(r"unused\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
+    assert match, f"unused.js missing from coverage output:\n{output}"
+
+    stmts = int(match.group(1))
+    missed = int(match.group(2))
+    covered_percent = int(match.group(3))
+
+    assert stmts > 0, f"expected unused.js to report statements, got:\n{output}"
+    assert missed == stmts, (
+        f"expected all statements missed for unused.js, got:\n{output}"
+    )
+    assert covered_percent == 0, f"expected 0% coverage for unused.js, got:\n{output}"
+    assert "CoverageWarning" not in output

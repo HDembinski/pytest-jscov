@@ -6,11 +6,13 @@ from pathlib import Path
 import pytest
 from playwright.async_api import async_playwright
 
+from pytest_jscov.plugin import JsCovPlugin
+
 DATA_DIR = Path(__file__).parent.parent / "data"
 
 
 @pytest.fixture(scope="session")
-def anyio_backend():
+def anyio_backend() -> str:
     return "asyncio"
 
 
@@ -33,3 +35,17 @@ async def browser():
         b = await p.chromium.launch()
         yield b
         await b.close()
+
+
+# This fixture is used to reset the state of the JsCovPlugin between tests,
+# ensuring that coverage data from one test does not affect another.
+@pytest.fixture(autouse=True)
+def reset_jscov_state(request):
+    plugin = request.config.pluginmanager.get_plugin(JsCovPlugin.name)
+    if plugin is None:
+        yield
+        return
+
+    plugin.accumulated.clear()
+    plugin.sources.clear()
+    yield

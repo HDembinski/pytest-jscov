@@ -8,6 +8,7 @@ See README for usage.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import coverage
@@ -16,6 +17,10 @@ from coverage.plugin_support import Plugins
 # Populated by pytest_jscov.plugin._inject_into_pytest_cov before the report
 # is generated.  Maps absolute path → sorted list of executable line numbers.
 _lines_data: dict[str, list[int]] = {}
+_source_lines_cache: dict[str, set[int]] = {}
+
+_STRUCTURAL_LINE_RE = re.compile(r"^[{}()[\],;]+$")
+_NON_EXECUTABLE_KEYWORDS = {"do", "else", "finally", "try"}
 
 
 def _is_relative_to(path: Path, other: Path) -> bool:
@@ -47,6 +52,101 @@ def _iter_reportable_js(target: Path):
         for path in target.rglob(pattern):
             if _is_reportable_js(path):
                 yield str(path.resolve())
+
+
+def _strip_js_comment_text(source: str) -> str:
+    """Return *source* with comments removed while preserving line structure."""
+    result: list[str] = []
+    in_block_comment = False
+    string_delimiter: str | None = None
+    escaped = False
+
+    index = 0
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+
+        if in_block_comment:
+            if char == "\n":
+                result.append(char)
+            elif char == "*" and next_char == "/":
+                in_block_comment = False
+                index += 1
+            index += 1
+            continue
+
+        if string_delimiter is not None:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == string_delimiter:
+                string_delimiter = None
+            index += 1
+            continue
+
+        if char == "/" and next_char == "/":
+            while index < len(source) and source[index] != "\n":
+                index += 1
+            continue
+
+        if char == "/" and next_char == "*":
+            in_block_comment = True
+            index += 2
+            continue
+
+        if char in {'"', "'", "`"}:
+            string_delimiter = char
+
+        result.append(char)
+        index += 1
+
+    return "".join(result)
+
+
+def _is_executable_line(text: str) -> bool:
+    """Return True when a stripped JS/TS source line likely contains code."""
+    if not text:
+        return False
+    if _STRUCTURAL_LINE_RE.fullmatch(text):
+        return False
+
+    normalized = text.strip("{}();,[] ")
+    if not normalized:
+        return False
+    if normalized in _NON_EXECUTABLE_KEYWORDS:
+        return False
+    return True
+
+
+def _static_executable_lines(source: str) -> set[int]:
+    """Infer executable line numbers from JS/TS source text.
+
+    This is intentionally heuristic rather than a full parser. Its purpose is to
+    ensure uncovered files still report a non-zero statement count, while keeping
+    line numbers close to what the V8 runtime coverage data reports for loaded
+    files.
+    """
+    uncommented_source = _strip_js_comment_text(source)
+    executable_lines: set[int] = set()
+
+    for line_number, line in enumerate(uncommented_source.splitlines(), start=1):
+        if _is_executable_line(line.strip()):
+            executable_lines.add(line_number)
+
+    return executable_lines
+
+
+def _executable_lines_for_file(filename: str) -> set[int]:
+    """Return cached executable lines for *filename* based on source text."""
+    cached = _source_lines_cache.get(filename)
+    if cached is not None:
+        return cached
+
+    lines = _static_executable_lines(Path(filename).read_text(encoding="utf-8"))
+    _source_lines_cache[filename] = lines
+    return lines
 
 
 class JsFilePlugin(coverage.CoveragePlugin):
@@ -99,8 +199,8 @@ class JsFileReporter(coverage.FileReporter):
         return Path(self.filename).read_text(encoding="utf-8")
 
     def lines(self) -> set[int]:
-        """Return executable lines from V8 coverage data."""
-        return set(_lines_data.get(self.filename, []))
+        """Return executable lines inferred from the source text."""
+        return _executable_lines_for_file(self.filename)
 
 
 def coverage_init(reg: Plugins, options: dict) -> None:

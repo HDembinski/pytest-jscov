@@ -1,17 +1,14 @@
-"""Inner test exercising the jscov fixture with async Playwright."""
+"""
+Inner test exercising the jscov fixture with async Playwright.
+
+To run this test correctly, you must use `pytest tests/smoke/test_app.py --cov`.
+"""
 
 import pytest
 
 from pytest_jscov.plugin import JsCovPlugin
 
 
-def _hit_delta(
-    before: dict[int, int], after: dict[int, int], lines: set[int]
-) -> dict[int, int]:
-    return {line: after.get(line, 0) - before.get(line, 0) for line in lines}
-
-
-@pytest.mark.anyio
 async def test_js_coverage(request, browser, jscov, base_url):
     plugin = request.config.pluginmanager.get_plugin(JsCovPlugin.name)
 
@@ -29,21 +26,20 @@ async def test_js_coverage(request, browser, jscov, base_url):
     assert "/static/app.js" in plugin.accumulated
     hits = plugin.accumulated["/static/app.js"]
 
-    #   1: // this function should be covered by tests
+    #   1: // this function...      ← IGNORED
     #   2: function greet(name) {   ← covered
     #   3:   if (name) {            ← covered
     #   4:     return "Hi, " + name ← covered
-    #   5:   }
+    #   5:   }                      ← IGNORED
     #   6:   return "Hi, stranger"  ← NOT covered
-    #   7: }
+    #   7: }                        ← IGNORED
     covered = {line for line, count in hits.items() if count > 0}
     uncovered = {line for line, count in hits.items() if count == 0}
 
-    assert {1, 2, 3, 4, 5, 7} == covered, f"expected line 4 covered, got {hits}"
-    assert {6} == uncovered, f"expected line 1 uncovered, got {hits}"
+    assert {2, 3, 4} == covered, f"expected truthy path covered, got {hits}"
+    assert {6} == uncovered, f"expected falsy return uncovered, got {hits}"
 
 
-@pytest.mark.anyio
 @pytest.mark.parametrize(
     "navigation_method",
     [
@@ -58,7 +54,6 @@ async def test_page_navigation_preserves_prenavigation_coverage(
 ):
     plugin = request.config.pluginmanager.get_plugin(JsCovPlugin.name)
 
-    before = dict(plugin.accumulated.get("/static/app.js", {}))
     second_url = f"{base_url}/?page=second"
 
     context = await browser.new_context()
@@ -69,6 +64,8 @@ async def test_page_navigation_preserves_prenavigation_coverage(
     await page.goto(base_url)
     await page.goto(second_url)
     await page.go_back()
+
+    assert not plugin.accumulated
 
     async with jscov(context, page, base_url):
         assert await page.evaluate("greet('Alice')") == "Hi, Alice"
@@ -82,17 +79,13 @@ async def test_page_navigation_preserves_prenavigation_coverage(
         elif navigation_method == "go_forward":
             await page.go_forward()
 
+        before = plugin.accumulated["/static/app.js"]
+
         assert await page.evaluate("greet()") == "Hi, stranger"
 
     await page.close()
     await context.close()
-
     after = plugin.accumulated["/static/app.js"]
-    delta = _hit_delta(before, after, {4, 6})
 
-    assert delta[4] == 1, (
-        f"expected truthy branch hit before {navigation_method}, got {delta}"
-    )
-    assert delta[6] == 1, (
-        f"expected falsy branch hit after {navigation_method}, got {delta}"
-    )
+    assert {k for k, v in before.items() if v > 0} == {2, 3, 4}
+    assert {k for k, v in after.items() if v > 0} == {2, 3, 4, 6}

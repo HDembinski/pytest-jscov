@@ -19,6 +19,7 @@ test = ["anyio>=4.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+anyio_mode = "auto"
 
 [project.entry-points."pytest11"]
 jscov = "pytest_jscov.plugin"
