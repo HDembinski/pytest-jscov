@@ -6,6 +6,7 @@ To run this test correctly, you must use `pytest tests/smoke/test_app.py --cov`.
 
 import pytest
 
+from pytest_jscov import save_coverage
 from pytest_jscov.plugin import JsCovPlugin
 
 
@@ -50,7 +51,7 @@ async def test_manual_save_preserves_coverage_before_js_navigation(
     await page.goto(base_url)
     assert await page.evaluate("greet('Alice')") == "Hi, Alice"
 
-    await page.save_coverage()
+    await save_coverage(page)
     await page.evaluate("window.location.assign('about:blank')")
     await page.wait_for_url("about:blank")
 

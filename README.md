@@ -46,8 +46,15 @@ tests, but it does **not** catch page navigation triggered from JavaScript, such
 
    `window.location.assign(...)`
 
-For those cases, instrumented pages get a `save_coverage()` method. Call it just
-before the action that would replace the page context.
+For those cases, call `save_coverage(page)` just before the action that would
+replace the page context:
+
+```python
+from pytest_jscov import save_coverage
+
+await save_coverage(page)
+await page.evaluate("window.location.assign('about:blank')")
+```
 
 ### Detection of executable lines
 
@@ -109,8 +116,8 @@ return instrumented objects so that:
    coverage for the new page
 - **During the page lifetime:** flushes coverage before `page.reload()`,
    `page.goto()`, `page.go_back()`, `page.go_forward()`, and `page.close()`
-- **During the page lifetime:** patches `await page.save_coverage()` onto the
-   Playwright page so you can persist coverage before JS-triggered navigation
+- **During the page lifetime:** lets you call `await save_coverage(page)` to
+   persist coverage before JS-triggered navigation
 - **On `context.close()`:** collects coverage from all tracked pages, then
    detaches their CDP sessions
 

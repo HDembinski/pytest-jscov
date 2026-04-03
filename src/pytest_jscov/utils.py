@@ -2,7 +2,26 @@
 
 from pathlib import Path
 
+import pytest
+
 from pytest_jscov import covplugin
+
+
+def get_pytest_cov_controller(config: pytest.Config):
+    """Return pytest-cov's controller object when coverage is active."""
+    cov_plugin = config.pluginmanager.get_plugin("_cov")
+    return getattr(cov_plugin, "cov_controller", None)
+
+
+def get_pytest_cov_attr(config: pytest.Config, attr: str):
+    """Return an attribute from pytest-cov's controller, if present."""
+    controller = get_pytest_cov_controller(config)
+    return getattr(controller, attr, None)
+
+
+def is_pytest_cov_active(config: pytest.Config) -> bool:
+    """Return True if pytest-cov is installed, --cov was passed, and is not disabled."""
+    return get_pytest_cov_controller(config) is not None
 
 
 def line_offsets(source: str) -> list[int]:

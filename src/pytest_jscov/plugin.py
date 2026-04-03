@@ -8,97 +8,18 @@ See README for usage.
 
 import warnings
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pytest
 from coverage.exceptions import CoverageWarning
 
 from pytest_jscov import covplugin
 from pytest_jscov.playwright_patch import patch_playwright_browser
-from pytest_jscov.source_filtering import filter_line_hits, source_executable_lines
-from pytest_jscov.sourcemap import (
-    gen_to_orig_line_map,
-    normalise_source_key,
-    parse_inline_sourcemap,
-)
 from pytest_jscov.utils import (
-    entry_to_line_hits,
+    get_pytest_cov_attr,
     is_js_cov_source,
     matches_cov_source,
-    merge_hits,
     url_key_to_path,
 )
-
-# ---------------------------------------------------------------------------
-# Process a batch of V8 entries into the accumulated store
-# ---------------------------------------------------------------------------
-
-
-def process_entries(
-    entries: list[dict],
-    accumulated: dict[str, dict[int, int]],
-    sources: dict[str, str],
-) -> None:
-    """Fold V8 coverage *entries* into *accumulated* and *sources*.
-
-    Parameters
-    ----------
-    entries:
-        Raw V8 coverage entries, each augmented with a ``"source"`` key holding
-        the script text (fetch via ``Debugger.getScriptSource`` before calling).
-    accumulated:
-        Mutable dict of ``{script_key: {line: hits}}`` updated in-place.
-    sources:
-        Mutable dict of ``{script_key: source_text}`` updated in-place.
-    """
-    for entry in entries:
-        url: str = entry.get("url", "")
-        path = urlsplit(url).path
-        if not path.startswith("/static/"):
-            continue
-
-        source: str = entry.get("source", "")
-        line_hits = filter_line_hits(source, entry_to_line_hits(entry))
-
-        sourcemap = parse_inline_sourcemap(source)
-        if sourcemap:
-            gen_to_orig = gen_to_orig_line_map(sourcemap)
-            src_contents: list[str] = sourcemap.get("sourcesContent") or []
-            src_names: list[str] = sourcemap.get("sources") or []
-
-            orig_hits: dict[int, dict[int, int]] = {}
-            for gen_line, count in line_hits.items():
-                for src_idx, orig_line in gen_to_orig.get(gen_line, []):
-                    orig_hits.setdefault(src_idx, {})
-                    orig_hits[src_idx][orig_line] = (
-                        orig_hits[src_idx].get(orig_line, 0) + count
-                    )
-
-            for src_idx, hits in orig_hits.items():
-                key = src_names[src_idx] if src_idx < len(src_names) else url
-                key = normalise_source_key(url, key)
-                executable_lines = source_executable_lines(
-                    key,
-                    src_contents[src_idx] if src_idx < len(src_contents) else None,
-                )
-                if executable_lines is not None:
-                    hits = {
-                        line: count
-                        for line, count in hits.items()
-                        if line in executable_lines
-                    }
-                accumulated[key] = merge_hits(accumulated.get(key, {}), hits)
-                if key not in sources and src_idx < len(src_contents):
-                    sources[key] = src_contents[src_idx]
-        else:
-            accumulated[path] = merge_hits(accumulated.get(path, {}), line_hits)
-            if path not in sources:
-                sources[path] = source
-
-
-# ---------------------------------------------------------------------------
-# Pytest plugin
-# ---------------------------------------------------------------------------
 
 
 class JsCovPlugin:
@@ -129,15 +50,12 @@ class JsCovPlugin:
 
     def patch_playwright(self, config: pytest.Config) -> None:
         """Install Playwright coverage patching when coverage is active."""
-        patch_playwright_browser(config, self, process_entries, is_pytest_cov_active)
+        patch_playwright_browser(config, self)
 
 
 def resolve_static_root(session: pytest.Session) -> str:
     """Return the static root path from the active coverage.py config."""
-    ctrl = getattr(
-        session.config.pluginmanager.get_plugin("_cov"), "cov_controller", None
-    )
-    cov = getattr(ctrl, "cov", None)
+    cov = get_pytest_cov_attr(session.config, "cov")
     if cov is None:
         return ""
     try:
@@ -148,10 +66,7 @@ def resolve_static_root(session: pytest.Session) -> str:
 
 def path_based_cov_sources(session: pytest.Session) -> list[Path] | None:
     """Return existing path-based --cov targets, or None when unfiltered."""
-    ctrl = getattr(
-        session.config.pluginmanager.get_plugin("_cov"), "cov_controller", None
-    )
-    cov_source = getattr(ctrl, "cov_source", None)
+    cov_source = get_pytest_cov_attr(session.config, "cov_source")
     if cov_source is None:
         return None
 
@@ -166,10 +81,7 @@ def path_based_cov_sources(session: pytest.Session) -> list[Path] | None:
 
 def has_only_js_cov_sources(session: pytest.Session) -> bool:
     """Return True when every explicit --cov source targets JS/TS content only."""
-    ctrl = getattr(
-        session.config.pluginmanager.get_plugin("_cov"), "cov_controller", None
-    )
-    cov_source = getattr(ctrl, "cov_source", None)
+    cov_source = get_pytest_cov_attr(session.config, "cov_source")
     if not cov_source:
         return False
 
@@ -231,9 +143,7 @@ def inject_into_pytest_cov(
 
     covplugin._lines_data.update(lines_cache)
 
-    cov_plugin = session.config.pluginmanager.get_plugin("_cov")
-    ctrl = getattr(cov_plugin, "cov_controller", None)
-    cov = getattr(ctrl, "cov", None)
+    cov = get_pytest_cov_attr(session.config, "cov")
     if cov is None:
         return
 
@@ -252,15 +162,6 @@ def inject_into_pytest_cov(
     else:
         cov_data.add_lines(executed)
     cov_data.add_file_tracers({path: tracer_name for path in executed})
-
-
-def is_pytest_cov_active(config: pytest.Config) -> bool:
-    """Return True if pytest-cov is installed, --cov was passed, and is not disabled."""
-    cov_plugin = config.pluginmanager.get_plugin("_cov")
-    return (
-        cov_plugin is not None
-        and getattr(cov_plugin, "cov_controller", None) is not None
-    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
