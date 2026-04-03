@@ -93,6 +93,15 @@ class JsFilePlugin(coverage.CoveragePlugin):
             yield from _iter_reportable_js(static_root)
 
 
+class JsCoverageConfigurer(coverage.CoveragePlugin):
+    """Force a coverage core that supports file tracer plugins."""
+
+    def configure(self, config) -> None:
+        """Select the ctrace core required for coverage plugin reporting."""
+        if config.get_option("run:core") != "ctrace":
+            config.set_option("run:core", "ctrace")
+
+
 class JsFileReporter(coverage.FileReporter):
     """File reporter that reads JS/TS source and provides executable lines."""
 
@@ -107,4 +116,5 @@ class JsFileReporter(coverage.FileReporter):
 
 def coverage_init(reg: Plugins, options: dict) -> None:
     """Entry point called by coverage.py to register the plugin."""
+    reg.add_configurer(JsCoverageConfigurer())
     reg.add_file_tracer(JsFilePlugin(options))

@@ -5,6 +5,8 @@ import re
 import subprocess
 import sys
 
+from coverage import Coverage
+
 
 def test_smoke():
     """Check that the output of `pytest --cov` includes app.js."""
@@ -28,6 +30,16 @@ def test_smoke():
     m = re.search(r"app\.js\s+(\d+)\s+(\d+)\s+(\d+)%", output)
     assert m and int(m.group(1)) > 0 and int(m.group(2)) < int(m.group(1))
     assert "CoverageWarning" not in output
+
+
+def test_plugin_forces_ctrace_core():
+    """The coverage plugin should select a core that supports file tracers."""
+    cov = Coverage(config_file=False)
+    cov.config.plugins = ["pytest_jscov.covplugin"]
+
+    cov._init()
+
+    assert cov.get_option("run:core") == "ctrace"
 
 
 def test_jscov_cli_overrides_config():
