@@ -17,8 +17,6 @@ already. Then you get coverage measurements on top with almost no extra effort.
   original `.ts` source files
 - Merges JS/TS line hits into pytest-cov so everything appears in one report
 - Works with `--cov-branch`, but no branch coverage is collected
-- Zero-config when coverage is not active: the `jscov` fixture is a no-op
-  unless `--cov` is passed
 - Full VS Code integration: coverage gutters work for JS/TS files just for Python
 
 ## Limitations
@@ -30,7 +28,7 @@ browser for this to work. For details, see the installation section.
 
 ### Loss of coverage data due to page navigation
 
-Coverage collection is not perfect when doing page nagivation. Coverage data is attached
+Coverage collection is not perfect when doing page navigation. Coverage data is attached
 to the currently executing page context. If that page reloads or navigates away before
 `pytest-jscov` reads the coverage data, the old execution context is gone and its coverage
 data with it.
@@ -46,7 +44,7 @@ tests, but it does **not** catch page navigation triggered from JavaScript, such
 
    `window.location.assign(...)`
 
-For those cases, call `save_coverage(page)` just before the action that would
+For those cases, you can call `save_coverage(page)` just before the action that would
 replace the page context:
 
 ```python
@@ -59,7 +57,7 @@ await page.evaluate("window.location.assign('about:blank')")
 ### Detection of executable lines
 
 We use a custom code to detect executable lines in JS/TS files to keep this project
-lightweight. This code may not be perfect yet, if you encounter issues, drop an issue.
+lightweight. This code may not be perfect, if you encounter issues, drop an issue.
 
 ## Installation
 
@@ -87,29 +85,8 @@ it can match coverage data to real files.
 The plugin automatically switches `coverage.py` to the plugin-compatible tracing
 `ctrace` core.
 
-### Use normal Playwright page creation
-
-```python
-import pytest
-from collections.abc import AsyncIterator
-from playwright.async_api import Browser, Page
-
-@pytest.fixture
-async def page(browser: Browser) -> AsyncIterator[Page]:
-   context = await browser.new_context()
-
-   page = await context.new_page()
-   await page.goto("http://localhost:8000")
-   yield page
-
-   await page.close()
-   await context.close()
-```
-
-Any page created from that context will have its coverage recorded. The same
-holds for pages created directly with `browser.new_page()`.
-
-When the plugin is active, `browser.new_context()` and `browser.new_page()`
+If you run `pytest --cov`, any page created from Playwright in Python will have its
+coverage recorded. The methods `browser.new_context()` and `browser.new_page()`
 return instrumented objects so that:
 
 - **On each `context.new_page()`:** opens a CDP session and starts V8 precise
@@ -118,10 +95,18 @@ return instrumented objects so that:
    `page.goto()`, `page.go_back()`, `page.go_forward()`, and `page.close()`
 - **During the page lifetime:** lets you call `await save_coverage(page)` to
    persist coverage before JS-triggered navigation
-- **On `context.close()`:** collects coverage from all tracked pages, then
-   detaches their CDP sessions
+- **On `page.close()` or `context.close()`:** collects coverage from all pages
+   before closing the context
 
-When `--cov` is not passed to pytest, Playwright is left alone.
+When `--cov` is not passed to pytest, Playwright is not instrumented.
+
+If you want to use manual coverage saving, import it explicitly:
+
+```python
+from pytest_jscov import save_coverage
+```
+
+When `--cov` is not passed to pytest, `save_coverage` does nothing.
 
 ### Run your tests
 
@@ -152,11 +137,10 @@ Just like with Python sources, you can restrict the coverage report to individua
 
 ## How it works
 
-1. The **pytest plugin** (`pytest_jscov.plugin`) provides the `jscov` fixture
-   and a `pytest_runtestloop` hook. During each test, coverage entries from V8
-   are accumulated in memory. After all tests complete, the accumulated data is
-   written as a `.coverage.jscov` file that pytest-cov's `combine()` step picks
-   up automatically.
+1. The **pytest plugin** (`pytest_jscov.plugin`) patches Playwright when
+   `--cov` is active and uses a `pytest_runtestloop` hook to inject the
+   accumulated JS/TS line hits directly into pytest-cov's active `Coverage`
+   object before pytest-cov finalises the report.
 
 2. The **coverage.py plugin** (`pytest_jscov.covplugin`) registers a file
    tracer and file reporter for JS/TS files. This teaches coverage.py how to
