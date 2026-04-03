@@ -8,11 +8,10 @@ from pathlib import Path
 import pytest
 from playwright.async_api import async_playwright
 
-from pytest_jscov.covplugin import _static_executable_lines
+from pytest_jscov.executable_lines import static_executable_lines
 from pytest_jscov.plugin import _filter_line_hits, entry_to_line_hits
 
 DATA_DIR = Path(__file__).parent / "data"
-STATIC_DIR = DATA_DIR / "static"
 
 
 @pytest.fixture(scope="module")
@@ -37,19 +36,40 @@ async def browser():
 
 
 def _fixture_source(name: str) -> str:
-    return (STATIC_DIR / name).read_text(encoding="utf-8")
+    return (DATA_DIR / name).read_text(encoding="utf-8")
 
 
 EXPECTED_LINES = [
-    ("detector_classic.js", {2, 7, 8, 9, 12}),
-    ("detector_module.js", {2, 7, 8, 9, 11}),
+    ("static/detector_classic.js", {2, 7, 8, 9, 12}),
+    ("static/detector_module.js", {2, 7, 8, 9, 11}),
 ]
 
 
 @pytest.mark.parametrize(("filename", "expected_lines"), EXPECTED_LINES)
 def test_static_executable_lines_for_detector_fixtures(filename, expected_lines):
     """The line detector should classify the fixture files predictably."""
-    assert _static_executable_lines(_fixture_source(filename)) == expected_lines
+    assert static_executable_lines(_fixture_source(filename)) == expected_lines
+
+
+def test_static_executable_lines_ignore_typescript_only_constructs():
+    """Directive prologues and TS-only declarations should not count as executable."""
+    source = _fixture_source("typescript_only.ts")
+
+    assert static_executable_lines(source) == {12, 13}
+
+
+def test_static_executable_lines_ignore_template_continuations_and_as_casts():
+    """Template continuation lines and TS `as`-cast continuations are ignored."""
+    source = _fixture_source("template_continuations_and_as_casts.ts")
+
+    assert static_executable_lines(source) == {3, 6, 7}
+
+
+def test_static_executable_lines_ignore_as_cast_object_literal_members():
+    """Type members inside multiline `as Foo & { ... }` casts are ignored."""
+    source = _fixture_source("as_cast_object_literal_members.ts")
+
+    assert static_executable_lines(source) == {3}
 
 
 async def _coverage_entry_for(page, script_name: str) -> dict:
@@ -95,7 +115,7 @@ async def test_static_detector_filters_cdp_line_hits(
     )
 
     assert filtered_cdp_lines == expected_lines
-    assert filtered_cdp_lines == _static_executable_lines(entry["source"])
+    assert filtered_cdp_lines == static_executable_lines(entry["source"])
     assert raw_cdp_lines >= filtered_cdp_lines
 
 

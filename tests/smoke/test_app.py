@@ -5,7 +5,6 @@ To run this test correctly, you must use `pytest tests/smoke/test_app.py --cov`.
 """
 
 import pytest
-
 from pytest_jscov.plugin import JsCovPlugin
 
 

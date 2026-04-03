@@ -18,6 +18,10 @@ import pytest
 from coverage.exceptions import CoverageWarning
 
 from pytest_jscov import covplugin
+from pytest_jscov.executable_lines import (
+    executable_lines_for_file,
+    static_executable_lines,
+)
 
 # ---------------------------------------------------------------------------
 # VLQ decoder (for sourcemap `mappings` field)
@@ -154,7 +158,7 @@ def entry_to_line_hits(entry: dict) -> dict[int, int]:
 
 def _filter_line_hits(source: str, line_hits: dict[int, int]) -> dict[int, int]:
     """Keep only line hits that the static detector considers executable."""
-    executable_lines = covplugin._static_executable_lines(source)
+    executable_lines = static_executable_lines(source)
     return {
         line: count for line, count in line_hits.items() if line in executable_lines
     }
@@ -163,11 +167,11 @@ def _filter_line_hits(source: str, line_hits: dict[int, int]) -> dict[int, int]:
 def _source_executable_lines(key: str, source_text: str | None) -> set[int] | None:
     """Return executable lines for a source-mapped file when available."""
     if source_text:
-        return covplugin._static_executable_lines(source_text)
+        return static_executable_lines(source_text)
 
     path = Path(key)
     if path.is_absolute() and path.exists():
-        return covplugin._executable_lines_for_file(str(path))
+        return executable_lines_for_file(str(path))
 
     return None
 
