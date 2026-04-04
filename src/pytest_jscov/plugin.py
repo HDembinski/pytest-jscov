@@ -17,6 +17,7 @@ from pytest_jscov.playwright_patch import patch_playwright_browser
 from pytest_jscov.utils import (
     get_pytest_cov_attr,
     is_js_cov_source,
+    is_pytest_cov_active,
     matches_cov_source,
     url_key_to_path,
 )
@@ -47,10 +48,6 @@ class JsCovPlugin:
         static_root = resolve_static_root(session)
         if static_root:
             inject_into_pytest_cov(session, self.accumulated, static_root)
-
-    def patch_playwright(self, config: pytest.Config) -> None:
-        """Install Playwright coverage patching when coverage is active."""
-        patch_playwright_browser(config, self)
 
 
 def resolve_static_root(session: pytest.Session) -> str:
@@ -168,4 +165,5 @@ def pytest_configure(config: pytest.Config) -> None:
     """Register the JsCovPlugin and patch Playwright."""
     plugin = JsCovPlugin()
     config.pluginmanager.register(plugin, JsCovPlugin.name)
-    plugin.patch_playwright(config)
+    if is_pytest_cov_active(config):
+        patch_playwright_browser(config, plugin)

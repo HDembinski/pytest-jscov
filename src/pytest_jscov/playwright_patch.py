@@ -7,7 +7,6 @@ import pytest
 from playwright.async_api import Browser, Page
 
 from pytest_jscov.entry_processing import process_entries
-from pytest_jscov.utils import is_pytest_cov_active
 
 
 class CoverageStore(Protocol):
@@ -168,9 +167,6 @@ def patch_playwright_browser(
     plugin: CoverageStore,
 ) -> None:
     """Patch Playwright browser creation helpers when coverage is active."""
-    if not is_pytest_cov_active(config):
-        return
-
     original_new_context = Browser.new_context
     original_new_page = Browser.new_page
 
