@@ -67,6 +67,32 @@ async def test_manual_save_preserves_coverage_before_js_navigation(
     assert {6} == uncovered, f"expected falsy return uncovered, got {hits}"
 
 
+async def test_function_call_breakpoint_preserves_coverage_before_js_navigation(
+    request, browser, base_url
+):
+    plugin = request.config.pluginmanager.get_plugin(JsCovPlugin.name)
+
+    context = await browser.new_context()
+    page = await context.new_page()
+
+    await page.goto(base_url)
+    assert await page.evaluate("greet('Alice')") == "Hi, Alice"
+
+    await page.evaluate("window.location.assign('about:blank')")
+    await page.wait_for_url("about:blank")
+
+    await page.close()
+    await context.close()
+
+    assert "/static/app.js" in plugin.accumulated
+    hits = plugin.accumulated["/static/app.js"]
+    covered = {line for line, count in hits.items() if count > 0}
+    uncovered = {line for line, count in hits.items() if count == 0}
+
+    assert {2, 3, 4} == covered, f"expected truthy path covered, got {hits}"
+    assert {6} == uncovered, f"expected falsy return uncovered, got {hits}"
+
+
 async def test_browser_new_page_is_instrumented(request, browser, base_url):
     plugin = request.config.pluginmanager.get_plugin(JsCovPlugin.name)
 
