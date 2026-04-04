@@ -36,8 +36,8 @@ async def test_js_coverage(request, browser, base_url):
     covered = {line for line, count in hits.items() if count > 0}
     uncovered = {line for line, count in hits.items() if count == 0}
 
-    assert {2, 3, 4} == covered, f"expected truthy path covered, got {hits}"
-    assert {6} == uncovered, f"expected falsy return uncovered, got {hits}"
+    assert {2, 3, 4} == covered
+    assert {6} == uncovered
 
 
 async def test_manual_save_preserves_coverage_before_js_navigation(
@@ -63,8 +63,8 @@ async def test_manual_save_preserves_coverage_before_js_navigation(
     covered = {line for line, count in hits.items() if count > 0}
     uncovered = {line for line, count in hits.items() if count == 0}
 
-    assert {2, 3, 4} == covered, f"expected truthy path covered, got {hits}"
-    assert {6} == uncovered, f"expected falsy return uncovered, got {hits}"
+    assert {2, 3, 4} == covered
+    assert {6} == uncovered
 
 
 async def test_function_call_breakpoint_preserves_coverage_before_js_navigation(
@@ -89,8 +89,8 @@ async def test_function_call_breakpoint_preserves_coverage_before_js_navigation(
     covered = {line for line, count in hits.items() if count > 0}
     uncovered = {line for line, count in hits.items() if count == 0}
 
-    assert {2, 3, 4} == covered, f"expected truthy path covered, got {hits}"
-    assert {6} == uncovered, f"expected falsy return uncovered, got {hits}"
+    assert {2, 3, 4} == covered
+    assert {6} == uncovered
 
 
 async def test_browser_new_page_is_instrumented(request, browser, base_url):
@@ -108,8 +108,8 @@ async def test_browser_new_page_is_instrumented(request, browser, base_url):
     covered = {line for line, count in hits.items() if count > 0}
     uncovered = {line for line, count in hits.items() if count == 0}
 
-    assert {2, 3, 4} == covered, f"expected truthy path covered, got {hits}"
-    assert {6} == uncovered, f"expected falsy return uncovered, got {hits}"
+    assert {2, 3, 4} == covered
+    assert {6} == uncovered
 
 
 @pytest.mark.parametrize(
