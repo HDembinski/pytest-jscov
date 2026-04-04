@@ -33,16 +33,32 @@ to the currently executing page context. If that page reloads or navigates away 
 `pytest-jscov` reads the coverage data, the old execution context is gone and its coverage
 data with it.
 
-We implement a partial workaround for this issue. When the plugin is active,
+We implement a partial workarounds for this issue. When the plugin is active,
 Playwright browser contexts created via `browser.new_context()` and pages
 created via `browser.new_page()` are automatically instrumented so that
 `reload`, `goto`, `go_back`, and `go_forward` flush coverage immediately
 before those navigations run.
 
-This improves coverage retention for navigations initiated through those page methods in
-tests, but it does **not** catch page navigation triggered from JavaScript, such as
+In addition, the plugin installs CDP function-call breakpoints for a small set of
+common browser navigation APIs and flushes coverage when they are called. This
+currently covers direct calls to:
 
-   `window.location.assign(...)`
+- `window.location.assign(...)`
+- `window.location.replace(...)`
+- `location.assign(...)`
+- `location.replace(...)`
+- `HTMLAnchorElement.prototype.click()`
+- `HTMLFormElement.prototype.submit()`
+- `HTMLFormElement.prototype.requestSubmit()`
+
+This improves coverage retention for both Playwright-driven navigations and some
+JavaScript-triggered navigations, but it still does **not** catch every way a page can
+transition, such as
+
+- `window.location.href = ...`
+- `window.location.pathname = ...`
+- History API changes like `history.pushState(...)` or `history.replaceState(...)`
+- navigations that do not go through one of the tracked function calls
 
 For those cases, you can call `save_coverage(page)` just before the action that would
 replace the page context:
@@ -93,6 +109,8 @@ return instrumented objects so that:
    coverage for the new page
 - **During the page lifetime:** flushes coverage before `page.reload()`,
    `page.goto()`, `page.go_back()`, `page.go_forward()`, and `page.close()`
+- **During the page lifetime:** flushes coverage when selected browser navigation
+   functions such as `location.assign()` and `location.replace()` are called
 - **During the page lifetime:** lets you call `await save_coverage(page)` to
    persist coverage before JS-triggered navigation
 - **On `page.close()` or `context.close()`:** collects coverage from all pages
