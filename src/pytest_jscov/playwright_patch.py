@@ -1,12 +1,12 @@
 """Playwright monkeypatching for automatic JS coverage collection."""
 
+import contextlib
 from typing import Protocol
 
 import pytest
 from playwright.async_api import Browser, Page
 
 from pytest_jscov.entry_processing import process_entries
-from pytest_jscov.utils import is_pytest_cov_active
 
 
 class CoverageStore(Protocol):
@@ -44,6 +44,84 @@ class SaveCoverage:
         process_entries(entries, self._plugin.accumulated, self._plugin.sources)
 
 
+class FunctionCallBreakpointFlusher:
+    """Flush coverage when selected JS navigation functions are called."""
+
+    breakpoint_target_expressions = (
+        "location.assign",
+        "location.replace",
+        "HTMLAnchorElement.prototype.click",
+        "HTMLFormElement.prototype.submit",
+        "HTMLFormElement.prototype.requestSubmit",
+    )
+
+    def __init__(self, cdp, saver: SaveCoverage) -> None:
+        self._cdp = cdp
+        self._saver = saver
+        self._breakpoint_ids: set[str] = set()
+        self._handling_pause = False
+        self._pause_handler_installed = False
+        self._paused_handler = self._make_paused_handler()
+
+    async def install(self) -> None:
+        """Install function-call breakpoints for the current execution context."""
+        if not self._pause_handler_installed:
+            self._cdp.on("Debugger.paused", self._paused_handler)
+            self._pause_handler_installed = True
+
+        for breakpoint_id in list(self._breakpoint_ids):
+            with contextlib.suppress(Exception):
+                await self._cdp.send(
+                    "Debugger.removeBreakpoint", {"breakpointId": breakpoint_id}
+                )
+        self._breakpoint_ids.clear()
+
+        for expression in self.breakpoint_target_expressions:
+            try:
+                remote = await self._cdp.send(
+                    "Runtime.evaluate",
+                    {
+                        "expression": expression,
+                        "objectGroup": "pytest_jscov_breakpoints",
+                    },
+                )
+                object_id = remote.get("result", {}).get("objectId")
+                if not object_id:
+                    continue
+                breakpoint = await self._cdp.send(
+                    "Debugger.setBreakpointOnFunctionCall", {"objectId": object_id}
+                )
+                breakpoint_id = breakpoint.get("breakpointId")
+                if breakpoint_id:
+                    self._breakpoint_ids.add(breakpoint_id)
+            except Exception:
+                continue
+
+    async def _resume(self) -> None:
+        with contextlib.suppress(Exception):
+            await self._cdp.send("Debugger.resume")
+
+    def _make_paused_handler(self):
+        async def on_paused(params) -> None:
+            hit_breakpoints = set(params.get("hitBreakpoints", []))
+            if not self._breakpoint_ids.intersection(hit_breakpoints):
+                await self._resume()
+                return
+
+            if self._handling_pause:
+                await self._resume()
+                return
+
+            self._handling_pause = True
+            try:
+                await self._saver()
+            finally:
+                self._handling_pause = False
+                await self._resume()
+
+        return on_paused
+
+
 _PAGE_COVERAGE_SAVERS: dict[int, SaveCoverage] = {}
 
 
@@ -60,7 +138,12 @@ async def save_coverage(page: Page) -> None:
     await saver()
 
 
-def _wrap_page_method(page: Page, method_name: str, saver: SaveCoverage) -> None:
+def _wrap_page_method(
+    page: Page,
+    method_name: str,
+    saver: SaveCoverage,
+    breakpoint_flusher: FunctionCallBreakpointFlusher,
+) -> None:
     """Wrap one Playwright page method to flush coverage before it runs."""
     original = getattr(page, method_name)
     assert original is not None, f"expected page to have method {method_name}"
@@ -68,7 +151,10 @@ def _wrap_page_method(page: Page, method_name: str, saver: SaveCoverage) -> None
     async def wrapped(*args, **kwargs):
         try:
             await saver()
-            return await original(*args, **kwargs)
+            result = await original(*args, **kwargs)
+            if method_name != "close":
+                await breakpoint_flusher.install()
+            return result
         finally:
             if method_name == "close":
                 _clear_page_coverage_saver(page)
@@ -81,9 +167,6 @@ def patch_playwright_browser(
     plugin: CoverageStore,
 ) -> None:
     """Patch Playwright browser creation helpers when coverage is active."""
-    if not is_pytest_cov_active(config):
-        return
-
     original_new_context = Browser.new_context
     original_new_page = Browser.new_page
 
@@ -110,13 +193,16 @@ async def _instrument_page(
     """Attach CDP coverage tracking to one page."""
     cdp = await context.new_cdp_session(page)
     saver = SaveCoverage(cdp, plugin)
+    breakpoint_flusher = FunctionCallBreakpointFlusher(cdp, saver)
     _PAGE_COVERAGE_SAVERS[id(page)] = saver
 
     for method_name in ("reload", "goto", "go_back", "go_forward", "close"):
-        _wrap_page_method(page, method_name, saver)
+        _wrap_page_method(page, method_name, saver, breakpoint_flusher)
 
     await cdp.send("Profiler.enable")
     await cdp.send("Debugger.enable")
+    await cdp.send("Runtime.enable")
+    await breakpoint_flusher.install()
     await cdp.send(
         "Profiler.startPreciseCoverage", {"callCount": True, "detailed": True}
     )
